@@ -165,6 +165,12 @@ func (s *UploadService) handleMkdir(id string, data json.RawMessage) {
 		s.handleError(id, actionMkdir, fmt.Errorf("上传失败: 创建文件夹失败: %s", err))
 		return
 	}
+
+	s.conn.WriteJSON(&service.Message{
+		Service: s.Name(),
+		Id:      id,
+		Action:  actionMkdir,
+	})
 }
 
 func (s *UploadService) handleStartSession(id string, data json.RawMessage) {
