@@ -237,6 +237,12 @@ func (s *UploadService) handleCancelSession(id string) {
 	s.Lock()
 	delete(s.sessions, id)
 	s.Unlock()
+
+	s.conn.WriteJSON(&service.Message{
+		Service: s.Name(),
+		Id:      id,
+		Action:  actionCancelSession,
+	})
 }
 
 func (s *UploadService) handleStartFile(id string, data json.RawMessage) {
