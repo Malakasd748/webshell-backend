@@ -13,10 +13,9 @@ import (
 	"sync"
 	"time"
 
-	ws "github.com/gorilla/websocket"
+	libws "github.com/gorilla/websocket"
 
-	"webshell/service"
-	"webshell/websocket"
+	ws "webshell/websocket"
 )
 
 const (
@@ -65,7 +64,7 @@ type chunkMeta struct {
 }
 
 type UploadService struct {
-	conn *websocket.Conn
+	conn *ws.Conn
 
 	sessions map[string]*uploadSession
 	*sync.RWMutex
@@ -78,6 +77,10 @@ type UploadService struct {
 
 func (s *UploadService) Name() string {
 	return "upload"
+}
+
+func (s *UploadService) Register(conn *ws.Conn) {
+	s.conn = conn
 }
 
 func (s *UploadService) HandleMessage(id, action string, data json.RawMessage) {
@@ -129,7 +132,7 @@ func (s *UploadService) handleCompleteSession(id string) {
 	s.Unlock()
 
 	// 向客户端发送完成消息
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionCompleteSession,
@@ -137,7 +140,7 @@ func (s *UploadService) handleCompleteSession(id string) {
 }
 
 func (s *UploadService) Cleanup(err error) {
-	if !ws.IsUnexpectedCloseError(err) {
+	if !libws.IsUnexpectedCloseError(err) {
 		return
 	}
 
@@ -166,7 +169,7 @@ func (s *UploadService) handleMkdir(id string, data json.RawMessage) {
 		return
 	}
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionMkdir,
@@ -185,7 +188,7 @@ func (s *UploadService) handleStartSession(id string, data json.RawMessage) {
 	_, err := os.Stat(id)
 	// File exists, request frontend confirmation
 	if err == nil && d.Policy == "" {
-		s.conn.WriteJSON(&service.Message{
+		s.conn.WriteJSON(&ws.ServiceMessage{
 			Service: s.Name(),
 			Id:      id,
 			Action:  actionStartSession,
@@ -209,7 +212,7 @@ func (s *UploadService) handleStartSession(id string, data json.RawMessage) {
 	}
 	s.Unlock()
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionStartSession,
@@ -238,7 +241,7 @@ func (s *UploadService) handleCancelSession(id string) {
 	delete(s.sessions, id)
 	s.Unlock()
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionCancelSession,
@@ -270,15 +273,13 @@ func (s *UploadService) handleStartFile(id string, data json.RawMessage) {
 	relPath := d.Path
 	if path.IsAbs(d.Path) {
 		relPath = path.Clean(strings.TrimPrefix(d.Path, id))
-		if strings.HasPrefix(relPath, "/") {
-			relPath = relPath[1:]
-		}
+		relPath = strings.TrimPrefix(relPath, "/")
 	}
 	p := path.Join(ss.dest, relPath)
 	// Check if should skip file
 	stat, statErr := os.Stat(p)
 	if statErr == nil && ss.policy == policySkip {
-		s.conn.WriteJSON(&service.Message{
+		s.conn.WriteJSON(&ws.ServiceMessage{
 			Service: s.Name(),
 			Id:      id,
 			Action:  actionStartFile,
@@ -306,7 +307,7 @@ func (s *UploadService) handleStartFile(id string, data json.RawMessage) {
 	ss.File = f
 	ss.hasher.Reset()
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionStartFile,
@@ -348,7 +349,7 @@ func (s *UploadService) handleCompleteFile(id string, data json.RawMessage) {
 		return
 	}
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionCompleteFile,
@@ -414,7 +415,7 @@ func (s *UploadService) writeChunkData(meta *chunkMeta, data []byte) {
 
 	ss.hasher.Write(data)
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      meta.id,
 		Action:  actionChunk,
@@ -425,7 +426,7 @@ func (s *UploadService) writeChunkData(meta *chunkMeta, data []byte) {
 func (s *UploadService) handleError(id, action string, err error) {
 	s.Println(err)
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  action,
@@ -445,10 +446,8 @@ func (s *UploadService) handleError(id, action string, err error) {
 	}
 }
 
-func NewUploadService(conn *websocket.Conn) *UploadService {
+func NewService() *UploadService {
 	return &UploadService{
-		conn: conn,
-
 		sessions: make(map[string]*uploadSession),
 		RWMutex:  new(sync.RWMutex),
 

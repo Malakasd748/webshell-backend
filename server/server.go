@@ -7,22 +7,24 @@ import (
 	"net/http"
 	"time"
 
-	ws "github.com/gorilla/websocket"
+	libws "github.com/gorilla/websocket"
 
-	"webshell/service"
 	"webshell/service/fs"
 	"webshell/service/heartbeat"
 	"webshell/service/pty"
 	"webshell/service/upload"
-	"webshell/websocket"
+	ws "webshell/websocket"
 )
 
 type Server struct {
-	*websocket.Conn
+	*ws.Conn
 	// 暂时不需要锁
-	services map[string]service.Service
+	services map[string]ws.Service
 
 	lastActiveTime time.Time
+
+	textChan   chan ws.ServiceMessage
+	binaryChan chan []byte
 }
 
 func (s *Server) checkTimeout() {
@@ -36,29 +38,62 @@ func (s *Server) checkTimeout() {
 	}()
 }
 
+func (s *Server) register(service ws.Service) {
+	if _, exists := s.services[service.Name()]; exists {
+		log.Printf("service %s already registered", service.Name())
+		return
+	}
+
+	service.Register(s.Conn)
+	s.services[service.Name()] = service
+}
+
 func NewServer(w http.ResponseWriter, r *http.Request) {
-	conn, err := websocket.NewConn(w, r)
+	conn, err := ws.NewConn(w, r)
 	if err != nil {
 		return
 	}
 
-	hearbeat := heartbeat.NewHearbeatService(conn)
-	pty := pty.NewPTYService(conn)
-	fs := fs.NewFSService(conn)
-	upload := upload.NewUploadService(conn)
+	hearbeat := heartbeat.NewService()
+	ptyService := pty.NewService()
+	fsService := fs.NewService()
+	uploadService := upload.NewService()
 
 	server := &Server{
 		Conn:           conn,
-		services:       make(map[string]service.Service, 4),
+		services:       make(map[string]ws.Service, 4),
 		lastActiveTime: time.Now(),
 	}
 
+	// Initialize channels for text and binary messages
+	server.textChan = make(chan ws.ServiceMessage, 10)
+	server.binaryChan = make(chan []byte, 10)
+
 	server.checkTimeout()
 
-	server.services[hearbeat.Name()] = hearbeat
-	server.services[pty.Name()] = pty
-	server.services[fs.Name()] = fs
-	server.services[upload.Name()] = upload
+	server.register(hearbeat)
+	server.register(ptyService)
+	server.register(fsService)
+	server.register(uploadService)
+
+	// Start goroutine to handle binary messages
+	go func() {
+		for binData := range server.binaryChan {
+			uploadService.WriteChunkData(binData)
+		}
+	}()
+
+	// Start goroutine to handle text messages
+	go func() {
+		for msg := range server.textChan {
+			if msg.Service != hearbeat.Name() {
+				server.lastActiveTime = time.Now()
+			}
+			if s, exists := server.services[msg.Service]; exists {
+				s.HandleMessage(msg.Id, msg.Action, msg.Data)
+			}
+		}
+	}()
 
 	for {
 		msgType, data, err := server.ReadMessage()
@@ -69,26 +104,23 @@ func NewServer(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		if msgType == ws.BinaryMessage {
-			upload.WriteChunkData(data)
+		if msgType == libws.BinaryMessage {
+			server.binaryChan <- data
 			continue
 		}
 
-		var msg service.Message
+		var msg ws.ServiceMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
 			log.Printf("error unmarshalling message: %v", err)
 			continue
 		}
 
-		if msg.Service != hearbeat.Name() {
-			server.lastActiveTime = time.Now()
-		}
-
-		if s, exists := server.services[msg.Service]; exists {
-			s.HandleMessage(msg.Id, msg.Action, msg.Data)
-		}
+		server.textChan <- msg
 	}
 
+	// Close channels after loop ends
+	close(server.binaryChan)
+	close(server.textChan)
 }
 
 func Start(port uint) chan int {

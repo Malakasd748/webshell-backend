@@ -9,8 +9,7 @@ import (
 	"path"
 	"strings"
 
-	"webshell/service"
-	"webshell/websocket"
+	ws "webshell/websocket"
 )
 
 const (
@@ -54,9 +53,14 @@ type moveData struct {
 }
 
 type FSService struct {
-	conn *websocket.Conn
+	conn *ws.Conn
 
 	*log.Logger
+}
+
+// Register implements service.Service.
+func (s *FSService) Register(conn *ws.Conn) {
+	s.conn = conn
 }
 
 func (s *FSService) Name() string {
@@ -116,7 +120,7 @@ func (s *FSService) handleMove(id string, data json.RawMessage) {
 		return
 	}
 
-	s.conn.WriteJSON(service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionMove,
@@ -155,7 +159,7 @@ func (s *FSService) handleCopy(id string, data json.RawMessage) {
 		return
 	}
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionCopy,
@@ -167,7 +171,7 @@ func (s *FSService) handleDelete(id string, _ json.RawMessage) {
 		s.handleError(id, actionDelete, err)
 		return
 	}
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionDelete,
@@ -202,7 +206,7 @@ func (s *FSService) handleCreate(id string, data json.RawMessage) {
 		f.Close()
 	}
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionCreate,
@@ -234,7 +238,7 @@ func (s *FSService) handleRename(id string, data json.RawMessage) {
 		return
 	}
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      oldPath,
 		Action:  actionRename,
@@ -283,7 +287,7 @@ func (s *FSService) handleList(id string, data json.RawMessage) {
 		return
 	}
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionList,
@@ -316,7 +320,7 @@ func (s *FSService) handleGetRoot(id string) {
 		return
 	}
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  actionRoot,
@@ -327,7 +331,7 @@ func (s *FSService) handleGetRoot(id string) {
 func (s *FSService) handleError(id, action string, err error) {
 	s.Println(err)
 
-	s.conn.WriteJSON(&service.Message{
+	s.conn.WriteJSON(&ws.ServiceMessage{
 		Service: s.Name(),
 		Id:      id,
 		Action:  action,
@@ -335,9 +339,8 @@ func (s *FSService) handleError(id, action string, err error) {
 	})
 }
 
-func NewFSService(conn *websocket.Conn) *FSService {
+func NewService() ws.Service {
 	return &FSService{
-		conn:   conn,
 		Logger: log.New(os.Stdout, "[fs] ", log.LstdFlags),
 	}
 }

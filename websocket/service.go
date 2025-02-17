@@ -1,4 +1,4 @@
-package service
+package websocket
 
 import (
 	"encoding/json"
@@ -8,9 +8,10 @@ type Service interface {
 	HandleMessage(id string, action string, data json.RawMessage)
 	Name() string
 	Cleanup(err error)
+	Register(conn *Conn)
 }
 
-type Message struct {
+type ServiceMessage struct {
 	Service string          `json:"service"`
 	Id      string          `json:"id,omitempty"`
 	Action  string          `json:"action,omitempty"`

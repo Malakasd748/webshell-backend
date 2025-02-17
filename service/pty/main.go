@@ -10,8 +10,7 @@ import (
 
 	"github.com/creack/pty"
 
-	"webshell/service"
-	"webshell/websocket"
+	ws "webshell/websocket"
 )
 
 const (
@@ -36,7 +35,7 @@ type ptyProcess struct {
 }
 
 type PTYService struct {
-	conn  *websocket.Conn
+	conn  *ws.Conn
 	procs map[string]*ptyProcess
 
 	*log.Logger
@@ -45,6 +44,10 @@ type PTYService struct {
 
 func (s *PTYService) Name() string {
 	return "pty"
+}
+
+func (s *PTYService) Register(conn *ws.Conn) {
+	s.conn = conn
 }
 
 func (s *PTYService) HandleMessage(id string, action string, data json.RawMessage) {
@@ -89,7 +92,7 @@ func (s *PTYService) HandleMessage(id string, action string, data json.RawMessag
 		if err := s.startPty(id, start.Cwd); err != nil {
 			s.Printf("(id: %s) error starting pty: %v", id, err)
 		}
-		s.conn.WriteJSON(&service.Message{
+		s.conn.WriteJSON(&ws.ServiceMessage{
 			Service: s.Name(),
 			Id:      id,
 			Action:  actionStart,
@@ -155,7 +158,7 @@ func (s *PTYService) startPty(id string, cwd string) error {
 
 			commandData, _ := json.Marshal(string(buf[:read]))
 
-			s.conn.WriteJSON(&service.Message{
+			s.conn.WriteJSON(&ws.ServiceMessage{
 				Service: s.Name(),
 				Id:      id,
 				Action:  actionCommand,
@@ -167,9 +170,8 @@ func (s *PTYService) startPty(id string, cwd string) error {
 	return nil
 }
 
-func NewPTYService(conn *websocket.Conn) *PTYService {
+func NewService() *PTYService {
 	return &PTYService{
-		conn:    conn,
 		procs:   make(map[string]*ptyProcess),
 		Logger:  log.New(os.Stdout, "[pty] ", log.LstdFlags),
 		RWMutex: &sync.RWMutex{},

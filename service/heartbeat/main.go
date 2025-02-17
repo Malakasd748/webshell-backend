@@ -3,24 +3,27 @@ package heartbeat
 import (
 	"encoding/json"
 
-	"webshell/service"
-	"webshell/websocket"
+	ws "webshell/websocket"
 )
 
 type HeartbeatService struct {
-	conn *websocket.Conn
+	conn *ws.Conn
 }
 
 func (s *HeartbeatService) Name() string {
 	return "heartbeat"
 }
 
+func (s *HeartbeatService) Register(conn *ws.Conn) {
+	s.conn = conn
+}
+
 func (s *HeartbeatService) HandleMessage(id, action string, data json.RawMessage) {
-	s.conn.WriteJSON(&service.Message{Service: s.Name(), Action: action, Id: id})
+	s.conn.WriteJSON(&ws.ServiceMessage{Service: s.Name(), Action: action, Id: id})
 }
 
 func (s *HeartbeatService) Cleanup(err error) {}
 
-func NewHearbeatService(conn *websocket.Conn) *HeartbeatService {
-	return &HeartbeatService{conn: conn}
+func NewService() ws.Service {
+	return &HeartbeatService{}
 }
