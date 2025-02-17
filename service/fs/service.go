@@ -236,7 +236,7 @@ func (s *FSService) handleRename(id string, data json.RawMessage) {
 
 	s.conn.WriteJSON(&service.Message{
 		Service: s.Name(),
-		Id:      newPath,
+		Id:      oldPath,
 		Action:  actionRename,
 	})
 }
