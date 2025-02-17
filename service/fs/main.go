@@ -162,7 +162,7 @@ func (s *FSService) handleCopy(id string, data json.RawMessage) {
 	})
 }
 
-func (s *FSService) handleDelete(id string, data json.RawMessage) {
+func (s *FSService) handleDelete(id string, _ json.RawMessage) {
 	if err := os.RemoveAll(id); err != nil {
 		s.handleError(id, actionDelete, err)
 		return
