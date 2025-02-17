@@ -13,8 +13,6 @@ import (
 	"sync"
 	"time"
 
-	libws "github.com/gorilla/websocket"
-
 	ws "webshell/websocket"
 )
 
@@ -71,6 +69,7 @@ type UploadService struct {
 
 	// buffered
 	chunkMeta chan *chunkMeta
+	chunkData chan []byte
 
 	*log.Logger
 }
@@ -78,6 +77,20 @@ type UploadService struct {
 // Register implements websocket.Service.
 func (s *UploadService) Register(conn *ws.Conn) {
 	s.conn = conn
+
+	go func() {
+		for {
+			meta, ok := <-s.chunkMeta
+			if !ok {
+				break
+			}
+			data, ok := <-s.chunkData
+			if !ok {
+				break
+			}
+			s.writeChunkData(meta, data)
+		}
+	}()
 }
 
 func (s *UploadService) Name() string {
@@ -99,13 +112,20 @@ func (s *UploadService) HandleTextMessage(id, action string, data json.RawMessag
 	case actionMkdir:
 		go s.handleMkdir(id, data)
 	case actionChunk:
-		var d chunkData
-		if err := json.Unmarshal(data, &d); err != nil {
-			s.Printf("error unmarshalling chunk data: %v", err)
-			return
-		}
-		s.chunkMeta <- &chunkMeta{id: id, progress: d.Progress}
+		go s.handleChunk(id, data)
 	}
+}
+
+func (s *UploadService) handleChunk(id string, data json.RawMessage) {
+	var d chunkData
+	if err := json.Unmarshal(data, &d); err != nil {
+		s.Printf("error decoding chunk data: %v", err)
+		return
+	}
+
+	s.chunkMeta <- &chunkMeta{id: id, progress: d.Progress}
+
+	s.conn.BinaryChan <- s.chunkData
 }
 
 // handleCompleteSession 处理上传会话完成的逻辑
@@ -141,11 +161,10 @@ func (s *UploadService) handleCompleteSession(id string) {
 }
 
 func (s *UploadService) Cleanup(err error) {
-	if !libws.IsUnexpectedCloseError(err) {
-		return
-	}
+	s.Printf("close error: %v", err)
 
-	s.Printf("unexpected close error: %v", err)
+	close(s.chunkData)
+	close(s.chunkMeta)
 
 	for _, ss := range s.sessions {
 		if ss.File != nil {
@@ -380,11 +399,6 @@ func getUniqueFilename(filepath string) string {
 		}
 	}
 	return result
-}
-
-func (s *UploadService) HandleBinaryMessage(data []byte) {
-	chunkMeta := <-s.chunkMeta
-	go s.writeChunkData(chunkMeta, data)
 }
 
 func (s *UploadService) writeChunkData(meta *chunkMeta, data []byte) {

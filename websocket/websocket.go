@@ -13,8 +13,9 @@ type Conn struct {
 	*ws.Conn
 	*sync.Mutex
 	// Exposed channels for text and binary messages
-	TextChan   chan *ServiceMessage
-	BinaryChan chan []byte
+	TextMessage   chan *ServiceMessage
+	BinaryMessage chan []byte
+	BinaryChan    chan chan []byte
 }
 
 var (
@@ -56,10 +57,11 @@ func NewConn(w http.ResponseWriter, r *http.Request) (*Conn, error) {
 	}
 
 	result := &Conn{
-		Conn:       conn,
-		Mutex:      new(sync.Mutex),
-		TextChan:   make(chan *ServiceMessage, 10),
-		BinaryChan: make(chan []byte, 10),
+		Conn:          conn,
+		Mutex:         new(sync.Mutex),
+		TextMessage:   make(chan *ServiceMessage, 10),
+		BinaryMessage: make(chan []byte, 10),
+		BinaryChan:    make(chan chan []byte),
 	}
 
 	return result, nil
@@ -70,20 +72,20 @@ func (c *Conn) StartDispatch() error {
 	for {
 		msgType, data, err := c.ReadMessage()
 		if err != nil {
-			close(c.TextChan)
-			close(c.BinaryChan)
+			close(c.TextMessage)
+			close(c.BinaryMessage)
 			return err
 		}
 
 		if msgType == ws.BinaryMessage {
-			c.BinaryChan <- data
+			c.BinaryMessage <- data
 		} else {
 			var msg ServiceMessage
 			if err := json.Unmarshal(data, &msg); err != nil {
 				log.Printf("error unmarshalling message: %v", err)
 				continue
 			}
-			c.TextChan <- &msg
+			c.TextMessage <- &msg
 		}
 	}
 }

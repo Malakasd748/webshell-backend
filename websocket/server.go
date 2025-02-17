@@ -32,26 +32,20 @@ func (s *Server) Register(service Service) {
 
 func (s *Server) RegisterPassive(service Service) {
 	if _, exists := s.services[service.Name()]; exists {
-		log.Printf("service %s already registered", service.Name())
+		log.Printf("Service %s already registered.", service.Name())
 		return
 	}
 
 	service.Register(s.Conn)
 	s.services[service.Name()] = service
-
 }
 
 func (s *Server) Start() {
 	go s.checkTimeout()
 
-	err := s.StartDispatch()
-	for _, s := range s.services {
-		s.Cleanup(err)
-	}
-
-	// Start goroutine to handle messages
+	// 处理文本信息
 	go func() {
-		for msg := range s.TextChan {
+		for msg := range s.TextMessage {
 			if slices.Contains(s.activeServices, msg.Service) {
 				s.lastActiveTime = time.Now()
 			}
@@ -60,6 +54,21 @@ func (s *Server) Start() {
 			}
 		}
 	}()
+
+	// 处理二进制信息
+	go func() {
+		for data := range s.BinaryMessage {
+			// 每次取数据的时候先取 BinaryChan ，取后只传入一条数据。
+			// BinaryChan 由服务在准备接受二进制数据时传入。这样就能有多个服务并发处理二进制数据。
+			ch := <-s.BinaryChan
+			ch <- data
+		}
+	}()
+
+	err := s.StartDispatch()
+	for _, s := range s.services {
+		s.Cleanup(err)
+	}
 }
 
 func NewServer(w http.ResponseWriter, r *http.Request) (*Server, error) {
