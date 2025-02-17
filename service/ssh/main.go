@@ -57,7 +57,7 @@ func (s *SSHService) Name() string {
 	return "ssh"
 }
 
-func (s *SSHService) HandleMessage(id string, action string, data json.RawMessage) {
+func (s *SSHService) HandleTextMessage(id string, action string, data json.RawMessage) {
 	s.RLock()
 	session, exists := s.sessions[id]
 	s.RUnlock()
@@ -210,7 +210,7 @@ func (s *SSHService) startSession(id string) error {
 	return nil
 }
 
-func NewService(network, addr string, config *ssh.ClientConfig) (*SSHService, error) {
+func NewService(network, addr string, config *ssh.ClientConfig) (ws.Service, error) {
 	client, err := ssh.Dial(network, addr, config)
 	if err != nil {
 		return nil, err

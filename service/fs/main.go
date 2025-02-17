@@ -67,7 +67,7 @@ func (s *FSService) Name() string {
 	return "fs"
 }
 
-func (s *FSService) HandleMessage(id, action string, data json.RawMessage) {
+func (s *FSService) HandleTextMessage(id, action string, data json.RawMessage) {
 	switch action {
 	case actionList:
 		go s.handleList(id, data)

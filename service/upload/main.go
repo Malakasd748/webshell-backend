@@ -75,15 +75,16 @@ type UploadService struct {
 	*log.Logger
 }
 
-func (s *UploadService) Name() string {
-	return "upload"
-}
-
+// Register implements websocket.Service.
 func (s *UploadService) Register(conn *ws.Conn) {
 	s.conn = conn
 }
 
-func (s *UploadService) HandleMessage(id, action string, data json.RawMessage) {
+func (s *UploadService) Name() string {
+	return "upload"
+}
+
+func (s *UploadService) HandleTextMessage(id, action string, data json.RawMessage) {
 	switch action {
 	case actionStartSession:
 		go s.handleStartSession(id, data)
@@ -381,7 +382,7 @@ func getUniqueFilename(filepath string) string {
 	return result
 }
 
-func (s *UploadService) WriteChunkData(data []byte) {
+func (s *UploadService) HandleBinaryMessage(data []byte) {
 	chunkMeta := <-s.chunkMeta
 	go s.writeChunkData(chunkMeta, data)
 }
@@ -446,7 +447,7 @@ func (s *UploadService) handleError(id, action string, err error) {
 	}
 }
 
-func NewService() *UploadService {
+func NewService() ws.Service {
 	return &UploadService{
 		sessions: make(map[string]*uploadSession),
 		RWMutex:  new(sync.RWMutex),

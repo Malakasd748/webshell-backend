@@ -50,7 +50,7 @@ func (s *PTYService) Register(conn *ws.Conn) {
 	s.conn = conn
 }
 
-func (s *PTYService) HandleMessage(id string, action string, data json.RawMessage) {
+func (s *PTYService) HandleTextMessage(id string, action string, data json.RawMessage) {
 	s.RLock()
 	proc, exists := s.procs[id]
 	s.RUnlock()
@@ -170,7 +170,7 @@ func (s *PTYService) startPty(id string, cwd string) error {
 	return nil
 }
 
-func NewService() *PTYService {
+func NewService() ws.Service {
 	return &PTYService{
 		procs:   make(map[string]*ptyProcess),
 		Logger:  log.New(os.Stdout, "[pty] ", log.LstdFlags),

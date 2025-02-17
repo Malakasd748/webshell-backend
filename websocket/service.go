@@ -5,7 +5,8 @@ import (
 )
 
 type Service interface {
-	HandleMessage(id string, action string, data json.RawMessage)
+	HandleTextMessage(id string, action string, data json.RawMessage)
+	HandleBinaryMessage(data []byte)
 	Name() string
 	Cleanup(err error)
 	Register(conn *Conn)

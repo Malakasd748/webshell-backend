@@ -18,7 +18,7 @@ func (s *HeartbeatService) Register(conn *ws.Conn) {
 	s.conn = conn
 }
 
-func (s *HeartbeatService) HandleMessage(id, action string, data json.RawMessage) {
+func (s *HeartbeatService) HandleTextMessage(id, action string, data json.RawMessage) {
 	s.conn.WriteJSON(&ws.ServiceMessage{Service: s.Name(), Action: action, Id: id})
 }
 
