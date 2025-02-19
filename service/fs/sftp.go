@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -26,7 +27,40 @@ func NewSFTPFileSystem(sshClient *ssh.Client, sftpClient *sftp.Client, logger *l
 
 // GetRoot implements fileSystem.
 func (s *SFTPFileSystem) GetRoot() ([]*FileSystemEntry, error) {
-	return s.List("/", true)
+	// Get home directory using ssh session
+	session, err := s.sshClient.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ssh session: %w", err)
+	}
+	defer session.Close()
+
+	output, err := session.Output("echo $HOME")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	// Trim any whitespace/newlines from the output
+	homePath := strings.TrimSpace(string(output))
+	if homePath == "" {
+		homePath = "~" // fallback to ~ if we couldn't get the explicit path
+	}
+
+	// Get file info of the home directory
+	info, err := s.Client.Stat(homePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory info: %w", err)
+	}
+
+	entry := &FileSystemEntry{
+		Name:    "/",
+		Path:    homePath,
+		IsDir:   true,
+		Size:    info.Size(),
+		Mode:    info.Mode(),
+		ModTime: info.ModTime().Unix(),
+	}
+
+	return []*FileSystemEntry{entry}, nil
 }
 
 // List implements fileSystem.
