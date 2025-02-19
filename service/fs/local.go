@@ -51,7 +51,7 @@ func (l *LocalFileSystem) Copy(src string, dest string) error {
 	if runtime.GOOS != "windows" {
 		if _, err := exec.LookPath("cp"); err == nil {
 			// cp命令存在，使用cp命令
-			cmd := exec.Command("cp", "-a", src, destPath)
+			cmd := exec.Command(fmt.Sprintf("cp -a %q %q", src, destPath))
 			if err := cmd.Run(); err != nil {
 				return fmt.Errorf("cp command failed: %w", err)
 			}
