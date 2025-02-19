@@ -18,7 +18,6 @@ const (
 	actionCommand   = "command"
 	actionResize    = "resize"
 	actionStart     = "start"
-	actionConnect   = "connect"
 	actionTerminate = "terminate"
 )
 

@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"log"
-	"net/http"
 	"slices"
 	"time"
 )
@@ -69,19 +68,4 @@ func (s *Server) Start() {
 	for _, s := range s.services {
 		s.Cleanup(err)
 	}
-}
-
-func NewServer(w http.ResponseWriter, r *http.Request) (*Server, error) {
-	conn, err := NewConn(w, r)
-	if err != nil {
-		return nil, err
-	}
-
-	server := &Server{
-		Conn:           conn,
-		services:       make(map[string]Service),
-		lastActiveTime: time.Now(),
-	}
-
-	return server, nil
 }

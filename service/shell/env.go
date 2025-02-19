@@ -1,4 +1,4 @@
-package pty
+package shell
 
 import (
 	"log"
