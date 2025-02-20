@@ -40,7 +40,7 @@ type moveData struct {
 type FSService struct {
 	conn *ws.Conn
 
-	fs FileSystem
+	FS FileSystem
 	*log.Logger
 }
 
@@ -81,7 +81,7 @@ func (s *FSService) handleMove(id string, data json.RawMessage) {
 		return
 	}
 
-	err := s.fs.Move(id, d.Dest)
+	err := s.FS.Move(id, d.Dest)
 	if err != nil {
 		s.handleError(id, actionMove, err)
 		return
@@ -101,7 +101,7 @@ func (s *FSService) handleCopy(id string, data json.RawMessage) {
 		return
 	}
 
-	err := s.fs.Copy(id, d.Dest)
+	err := s.FS.Copy(id, d.Dest)
 	if err != nil {
 		s.handleError(id, actionCopy, err)
 		return
@@ -115,7 +115,7 @@ func (s *FSService) handleCopy(id string, data json.RawMessage) {
 }
 
 func (s *FSService) handleDelete(id string, _ json.RawMessage) {
-	err := s.fs.Delete(id)
+	err := s.FS.Delete(id)
 	if err != nil {
 		s.handleError(id, actionDelete, err)
 		return
@@ -135,7 +135,7 @@ func (s *FSService) handleCreate(id string, data json.RawMessage) {
 		return
 	}
 
-	err := s.fs.Create(id, d.Name, d.IsDir)
+	err := s.FS.Create(id, d.Name, d.IsDir)
 	if err != nil {
 		s.handleError(id, actionCreate, err)
 		return
@@ -155,7 +155,7 @@ func (s *FSService) handleRename(id string, data json.RawMessage) {
 		return
 	}
 
-	err := s.fs.Rename(id, d.NewName)
+	err := s.FS.Rename(id, d.NewName)
 	if err != nil {
 		s.handleError(id, actionRename, err)
 		return
@@ -175,7 +175,7 @@ func (s *FSService) handleList(id string, data json.RawMessage) {
 		return
 	}
 
-	entries, err := s.fs.List(id, d.ShowHidden)
+	entries, err := s.FS.List(id, d.ShowHidden)
 	if err != nil {
 		s.handleError(id, actionList, err)
 		return
@@ -198,7 +198,7 @@ func (s *FSService) handleList(id string, data json.RawMessage) {
 }
 
 func (s *FSService) handleGetRoot(id string) {
-	root, err := s.fs.GetRoot()
+	root, err := s.FS.GetRoot()
 	if err != nil {
 		s.handleError(id, actionRoot, err)
 		return

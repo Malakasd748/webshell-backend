@@ -64,7 +64,10 @@ func (s *ShellService) HandleTextMessage(id string, action string, data json.Raw
 			return
 		}
 		if _, err := sh.Write([]byte(command)); err != nil {
-			s.Printf("(id: %s) error writing to pty: %v", id, err)
+			s.Printf("(id: %s) error writing to shell: %v", id, err)
+			// 在前端 shell 里输 `exit` 后，shell 已关闭，但 websocket 连接还没断
+			// 暂时在此处这样处理，可以在用户再次操作时触发重连
+			s.conn.Close()
 			return
 		}
 	case actionResize:
@@ -74,7 +77,7 @@ func (s *ShellService) HandleTextMessage(id string, action string, data json.Raw
 			return
 		}
 		if err := sh.Resize(resize.Rows, resize.Cols); err != nil {
-			s.Printf("(id: %s) error resizing pty: %v", id, err)
+			s.Printf("(id: %s) error resizing shell: %v", id, err)
 			return
 		}
 	case actionStart:
@@ -83,8 +86,8 @@ func (s *ShellService) HandleTextMessage(id string, action string, data json.Raw
 			s.Printf("(id: %s) error unmarshalling start payload: %v", id, err)
 			return
 		}
-		if err := s.startPty(id, start.Cwd); err != nil {
-			s.Printf("(id: %s) error starting pty: %v", id, err)
+		if err := s.startShell(id, start.Cwd); err != nil {
+			s.Printf("(id: %s) error starting shell: %v", id, err)
 			return
 		}
 		s.conn.WriteJSON(&ws.ServiceMessage{
@@ -108,7 +111,7 @@ func (s *ShellService) Cleanup(err error) {
 	s.shells = nil
 }
 
-func (s *ShellService) startPty(id string, cwd string) error {
+func (s *ShellService) startShell(id string, cwd string) error {
 	sh, err := s.ShellProvider.NewShell(cwd)
 	if err != nil {
 		return err
@@ -118,7 +121,7 @@ func (s *ShellService) startPty(id string, cwd string) error {
 	s.shells[id] = sh
 	s.Unlock()
 
-	// 发送 pty 输出
+	// 发送 shell 输出
 	writer := &utils.WebsocketWriter{
 		Service: s.Name(),
 		Id:      id,

@@ -40,7 +40,7 @@ func (s *Server) RegisterPassive(service Service) {
 	s.services[service.Name()] = service
 }
 
-func (s *Server) Start(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) Start() error {
 	go s.checkTimeout()
 
 	// 处理文本信息
@@ -65,23 +65,25 @@ func (s *Server) Start(w http.ResponseWriter, r *http.Request) error {
 		}
 	}()
 
-	go func() {
-		err := s.StartDispatch()
-		for _, s := range s.services {
-			s.Cleanup(err)
-		}
-
-	}()
-
-	return s.Connect(w, r)
+	err := s.StartDispatch()
+	for _, s := range s.services {
+		s.Cleanup(err)
+	}
+	return err
 }
 
-func NewServer() *Server {
-	server := &Server{
-		Conn:           NewConn(),
-		services:       make(map[string]Service),
-		lastActiveTime: time.Now(),
+func NewServer(w http.ResponseWriter, r *http.Request) (*Server, error) {
+	conn, err := NewConn(w, r)
+	if err != nil {
+		return nil, err
 	}
 
-	return server
+	server := &Server{
+		Conn:           conn,
+		services:       make(map[string]Service),
+		lastActiveTime: time.Now(),
+		activeServices: make([]string, 0, 3),
+	}
+
+	return server, nil
 }

@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	ws "webshell/websocket"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -62,7 +63,7 @@ func (s *SFTPFileSystem) List(path string, showHidden bool) ([]*FileSystemEntry,
 		return nil, fmt.Errorf("failed to read directory: %w", err)
 	}
 
-	var entries []*FileSystemEntry
+	entries := make([]*FileSystemEntry, 0, len(files))
 	for _, file := range files {
 		// Skip hidden files if not showing them
 		if !showHidden && file.Name()[0] == '.' {
@@ -182,4 +183,27 @@ func (s *SFTPFileSystem) Rename(oldPath string, newName string) error {
 		return fmt.Errorf("failed to rename: %w", err)
 	}
 	return nil
+}
+
+// NewSFTPService creates a new SFTP filesystem with both SFTP and SSH clients
+func NewSFTPService(sshClient *ssh.Client) (ws.Service, error) {
+	sftpClient, err := sftp.NewClient(sshClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sftp client: %w", err)
+	}
+
+	logger := log.New(log.Writer(), "[fs] ", log.LstdFlags)
+
+	fs := &SFTPFileSystem{
+		Client:    sftpClient,
+		sshClient: sshClient,
+		Logger:    logger,
+	}
+
+	service := &FSService{
+		FS:     fs,
+		Logger: logger,
+	}
+
+	return service, nil
 }

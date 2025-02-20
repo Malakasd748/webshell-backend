@@ -3,11 +3,13 @@ package shell
 import (
 	"io"
 	"log"
+	"sync"
+	ws "webshell/websocket"
 
 	"golang.org/x/crypto/ssh"
 )
 
-type SSHShell struct {
+type sshShell struct {
 	stdinWriter  io.WriteCloser
 	stdoutReader io.Reader
 
@@ -16,7 +18,7 @@ type SSHShell struct {
 }
 
 // Close implements Shell.
-func (s *SSHShell) Close() error {
+func (s *sshShell) Close() error {
 	if err := s.stdinWriter.Close(); err != nil {
 		s.Printf("close stdin writer error: %v", err)
 	}
@@ -25,17 +27,17 @@ func (s *SSHShell) Close() error {
 }
 
 // Read implements Shell.
-func (s *SSHShell) Read(p []byte) (n int, err error) {
+func (s *sshShell) Read(p []byte) (n int, err error) {
 	return s.stdoutReader.Read(p)
 }
 
 // Resize implements Shell.
-func (s *SSHShell) Resize(rows int, cols int) error {
+func (s *sshShell) Resize(rows int, cols int) error {
 	return s.WindowChange(rows, cols)
 }
 
 // Write implements Shell.
-func (s *SSHShell) Write(p []byte) (n int, err error) {
+func (s *sshShell) Write(p []byte) (n int, err error) {
 	return s.stdinWriter.Write(p)
 }
 
@@ -91,7 +93,7 @@ func (s *SSHShellProvider) NewShell(cwd string) (Shell, error) {
 		return nil, err
 	}
 
-	sh := &SSHShell{
+	sh := &sshShell{
 		Session:      session,
 		stdinWriter:  stdinPipe,
 		stdoutReader: combinedOutput,
@@ -101,16 +103,24 @@ func (s *SSHShellProvider) NewShell(cwd string) (Shell, error) {
 	return sh, nil
 }
 
-func NewSSHShellProvider(network, addr string, config *ssh.ClientConfig) (*SSHShellProvider, error) {
-	client, err := ssh.Dial(network, addr, config)
-	if err != nil {
-		return nil, err
-	}
-
+func newSSHShellProvider(client *ssh.Client) *SSHShellProvider {
 	sp := &SSHShellProvider{
 		Client: client,
 		Logger: log.New(log.Writer(), "[SSH] ", log.LstdFlags),
 	}
 
-	return sp, nil
+	return sp
+}
+
+func NewSSHService(client *ssh.Client) ws.Service {
+	logger := log.New(log.Writer(), "[shell] ", log.LstdFlags)
+
+	sp := newSSHShellProvider(client)
+
+	return &ShellService{
+		ShellProvider: sp,
+		shells:        make(map[string]Shell),
+		Logger:        logger,
+		RWMutex:       &sync.RWMutex{},
+	}
 }

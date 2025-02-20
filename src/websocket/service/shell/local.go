@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sync"
+	ws "webshell/websocket"
 
 	"github.com/creack/pty"
 )
@@ -61,4 +63,19 @@ func (l *LocalShellProvider) NewShell(cwd string) (Shell, error) {
 	}()
 
 	return sh, nil
+}
+
+func NewLocalService() ws.Service {
+	logger := log.New(log.Writer(), "[shell] ", log.LstdFlags)
+
+	sp := &LocalShellProvider{
+		Logger: logger,
+	}
+
+	return &ShellService{
+		ShellProvider: sp,
+		shells:        make(map[string]Shell),
+		Logger:        logger,
+		RWMutex:       &sync.RWMutex{},
+	}
 }

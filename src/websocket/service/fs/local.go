@@ -9,6 +9,7 @@ import (
 	"path"
 	"runtime"
 	"strings"
+	ws "webshell/websocket"
 )
 
 type LocalFileSystem struct {
@@ -200,4 +201,16 @@ func (l *LocalFileSystem) Rename(oldPath string, newName string) error {
 	}
 
 	return nil
+}
+
+func NewLocalService() ws.Service {
+	logger := log.New(log.Writer(), "[fs] ", log.LstdFlags)
+	fs := &LocalFileSystem{
+		Logger: logger,
+	}
+	service := &FSService{
+		FS:     fs,
+		Logger: logger,
+	}
+	return service
 }
