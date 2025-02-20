@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"log"
+	"net/http"
 	"slices"
 	"time"
 )
@@ -39,7 +40,7 @@ func (s *Server) RegisterPassive(service Service) {
 	s.services[service.Name()] = service
 }
 
-func (s *Server) Start() {
+func (s *Server) Start(w http.ResponseWriter, r *http.Request) error {
 	go s.checkTimeout()
 
 	// 处理文本信息
@@ -64,8 +65,23 @@ func (s *Server) Start() {
 		}
 	}()
 
-	err := s.StartDispatch()
-	for _, s := range s.services {
-		s.Cleanup(err)
+	go func() {
+		err := s.StartDispatch()
+		for _, s := range s.services {
+			s.Cleanup(err)
+		}
+
+	}()
+
+	return s.Connect(w, r)
+}
+
+func NewServer() *Server {
+	server := &Server{
+		Conn:           NewConn(),
+		services:       make(map[string]Service),
+		lastActiveTime: time.Now(),
 	}
+
+	return server
 }

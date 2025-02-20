@@ -3,6 +3,7 @@ package fs
 import (
 	"fmt"
 	"log"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -14,15 +15,6 @@ type SFTPFileSystem struct {
 	*sftp.Client
 	sshClient *ssh.Client
 	*log.Logger
-}
-
-// NewSFTPFileSystem creates a new SFTP filesystem with both SFTP and SSH clients
-func NewSFTPFileSystem(sshClient *ssh.Client, sftpClient *sftp.Client, logger *log.Logger) *SFTPFileSystem {
-	return &SFTPFileSystem{
-		Client:    sftpClient,
-		sshClient: sshClient,
-		Logger:    logger,
-	}
 }
 
 // GetRoot implements fileSystem.
@@ -164,7 +156,18 @@ func (s *SFTPFileSystem) Copy(src string, dest string) error {
 
 // Move implements fileSystem.
 func (s *SFTPFileSystem) Move(src string, dest string) error {
-	return s.Client.Rename(src, dest)
+	srcStat, err := s.Client.Stat(src)
+
+	if err != nil {
+		return fmt.Errorf("source path does not exist: %w", err)
+	}
+
+	newPath := path.Join(dest, srcStat.Name())
+
+	if _, err := s.Client.Stat(newPath); err == nil {
+		newPath += " copy"
+	}
+	return s.Client.Rename(src, newPath)
 }
 
 // Rename implements fileSystem.

@@ -49,22 +49,24 @@ func (c *Conn) WriteBinary(data []byte) error {
 }
 
 // NewConn initializes the connection and its channels
-func NewConn(w http.ResponseWriter, r *http.Request) (*Conn, error) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("Websocket upgrade error: %v", err)
-		return nil, err
-	}
-
-	result := &Conn{
-		Conn:          conn,
+func NewConn() *Conn {
+	conn := &Conn{
 		Mutex:         new(sync.Mutex),
 		TextMessage:   make(chan *ServiceMessage, 10),
 		BinaryMessage: make(chan []byte, 10),
 		BinaryChan:    make(chan chan []byte),
 	}
 
-	return result, nil
+	return conn
+}
+
+func (c *Conn) Connect(w http.ResponseWriter, r *http.Request) error {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return err
+	}
+	c.Conn = conn
+	return nil
 }
 
 // StartDispatch reads messages and dispatches them into appropriate channels
