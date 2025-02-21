@@ -46,12 +46,14 @@ func (s *Server) Start() error {
 	// 处理文本信息
 	go func() {
 		for msg := range s.TextMessage {
-			if slices.Contains(s.activeServices, msg.Service) {
+			service, exists := s.services[msg.Service]
+			if !exists {
+				continue
+			}
+			if slices.Contains(s.activeServices, service.Name()) {
 				s.lastActiveTime = time.Now()
 			}
-			if s, exists := s.services[msg.Service]; exists {
-				s.HandleTextMessage(msg.Id, msg.Action, msg.Data)
-			}
+			service.HandleTextMessage(msg.Id, msg.Action, msg.Data)
 		}
 	}()
 
