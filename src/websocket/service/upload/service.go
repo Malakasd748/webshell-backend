@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"hash"
 	"log"
 	"os"
 	"path"
@@ -47,15 +46,6 @@ type completeFileData struct {
 	Digest string `json:"digest,omitempty"`
 }
 
-type uploadSession struct {
-	dest   string
-	policy string
-	hasher hash.Hash
-
-	*os.File
-	*sync.Mutex
-}
-
 type chunkMeta struct {
 	id       string
 	progress uint
@@ -66,6 +56,8 @@ type UploadService struct {
 
 	sessions map[string]*uploadSession
 	*sync.RWMutex
+
+	backend uploadBackend
 
 	// buffered
 	chunkMeta chan *chunkMeta
@@ -100,19 +92,19 @@ func (s *UploadService) Name() string {
 func (s *UploadService) HandleTextMessage(id, action string, data json.RawMessage) {
 	switch action {
 	case actionStartSession:
-		go s.handleStartSession(id, data)
+		s.handleStartSession(id, data)
 	case actionCompleteSession:
-		go s.handleCompleteSession(id)
+		s.handleCompleteSession(id)
 	case actionCancelSession:
-		go s.handleCancelSession(id)
+		s.handleCancelSession(id)
 	case actionStartFile:
-		go s.handleStartFile(id, data)
+		s.handleStartFile(id, data)
 	case actionCompleteFile:
-		go s.handleCompleteFile(id, data)
+		s.handleCompleteFile(id, data)
 	case actionMkdir:
-		go s.handleMkdir(id, data)
+		s.handleMkdir(id, data)
 	case actionChunk:
-		go s.handleChunk(id, data)
+		s.handleChunk(id, data)
 	}
 }
 
@@ -140,11 +132,11 @@ func (s *UploadService) handleCompleteSession(id string) {
 	}
 
 	// 确保文件已关闭
-	if ss.File != nil {
+	if ss.file != nil {
 		ss.Lock()
-		ss.Close()
+		ss.file.Close()
 		ss.Unlock()
-		ss.File = nil
+		ss.file = nil
 	}
 
 	// 移除会话
@@ -167,13 +159,13 @@ func (s *UploadService) Cleanup(err error) {
 	close(s.chunkMeta)
 
 	for _, ss := range s.sessions {
-		if ss.File != nil {
+		if ss.file != nil {
 			ss.Lock()
-			ss.Close()
+			ss.file.Close()
 			ss.Unlock()
 			// 需要删吗？
-			go os.Remove(ss.Name())
-			ss.File = nil
+			go s.backend.DeletePath(ss.dest)
+			ss.file = nil
 		}
 	}
 }
@@ -184,7 +176,7 @@ func (s *UploadService) handleMkdir(id string, data json.RawMessage) {
 		s.Printf("error decoding mkdir data: %v", err)
 		return
 	}
-	if err := os.MkdirAll(d, 0755); err != nil {
+	if err := s.backend.MkdirAll(d); err != nil {
 		s.handleError(id, actionMkdir, fmt.Errorf("上传失败: 创建文件夹失败: %s", err))
 		return
 	}
@@ -205,9 +197,10 @@ func (s *UploadService) handleStartSession(id string, data json.RawMessage) {
 		}
 	}
 
-	_, err := os.Stat(id)
+	_, err := s.backend.Stat(id)
+
 	// File exists, request frontend confirmation
-	if err == nil && d.Policy == "" {
+	if d.Policy == "" && err == nil {
 		s.conn.WriteJSON(&ws.ServiceMessage{
 			Service: s.Name(),
 			Id:      id,
@@ -250,11 +243,11 @@ func (s *UploadService) handleCancelSession(id string) {
 		return
 	}
 
-	if ss.File != nil {
+	if ss.file != nil {
 		ss.Lock()
-		ss.Close()
+		ss.file.Close()
 		ss.Unlock()
-		go os.Remove(ss.Name())
+		go s.backend.DeletePath(ss.dest)
 	}
 
 	s.Lock()
@@ -278,7 +271,7 @@ func (s *UploadService) handleStartFile(id string, data json.RawMessage) {
 		return
 	}
 
-	if ss.File != nil {
+	if ss.file != nil {
 		s.Printf("didn't finish previous file, cannot start new one: %s", id)
 		return
 	}
@@ -295,10 +288,12 @@ func (s *UploadService) handleStartFile(id string, data json.RawMessage) {
 		relPath = path.Clean(strings.TrimPrefix(d.Path, id))
 		relPath = strings.TrimPrefix(relPath, "/")
 	}
+
 	p := path.Join(ss.dest, relPath)
-	// Check if should skip file
-	stat, statErr := os.Stat(p)
-	if statErr == nil && ss.policy == policySkip {
+
+	stat, statErr := s.backend.Stat(p)
+	// Check if we should skip file
+	if ss.policy == policySkip && stat == nil {
 		s.conn.WriteJSON(&ws.ServiceMessage{
 			Service: s.Name(),
 			Id:      id,
@@ -308,7 +303,7 @@ func (s *UploadService) handleStartFile(id string, data json.RawMessage) {
 		return
 	}
 
-	if err := os.MkdirAll(path.Dir(p), 0755); err != nil {
+	if err := s.backend.MkdirAll(path.Dir(p)); err != nil {
 		s.handleError(id, actionStartFile, err)
 		return
 	}
@@ -318,13 +313,13 @@ func (s *UploadService) handleStartFile(id string, data json.RawMessage) {
 		p = path.Join(p, fmt.Sprint("_", time.Now().Unix()))
 	}
 
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := s.backend.OpenFile(p)
 	if err != nil {
 		s.handleError(id, actionStartFile, err)
 		return
 	}
 
-	ss.File = f
+	ss.file = f
 	ss.hasher.Reset()
 
 	s.conn.WriteJSON(&ws.ServiceMessage{
@@ -345,15 +340,15 @@ func (s *UploadService) handleCompleteFile(id string, data json.RawMessage) {
 		return
 	}
 
-	if ss.File == nil {
+	if ss.file == nil {
 		return
 	}
 
 	ss.Lock()
-	ss.Close()
+	ss.file.Close()
 	ss.Unlock()
 
-	ss.File = nil
+	ss.file = nil
 
 	myHash := hex.EncodeToString(ss.hasher.Sum(nil))
 
@@ -408,13 +403,13 @@ func (s *UploadService) writeChunkData(meta *chunkMeta, data []byte) {
 
 	ss.Lock()
 	// Check if file is closed using stat to avoid write errors
-	_, err := ss.Stat()
+	_, err := s.backend.Stat(ss.dest)
 	if err != nil {
 		s.Printf("error stat-ing file: %v", err)
 		ss.Unlock()
 		return
 	}
-	written, err := ss.Write(data)
+	written, err := ss.file.Write(data)
 	ss.Unlock()
 
 	if err != nil {
@@ -452,21 +447,22 @@ func (s *UploadService) handleError(id, action string, err error) {
 	ss := s.sessions[id]
 	s.RUnlock()
 
-	if ss.File != nil {
+	if ss.file != nil {
 		ss.Lock()
-		ss.Close()
+		ss.file.Close()
 		ss.Unlock()
-		go os.Remove(ss.Name())
-		ss.File = nil
+		go s.backend.DeletePath(ss.dest)
+		ss.file = nil
 	}
 }
 
-func NewService() ws.Service {
+func newServiceBase() *UploadService {
 	return &UploadService{
 		sessions: make(map[string]*uploadSession),
 		RWMutex:  new(sync.RWMutex),
 
 		chunkMeta: make(chan *chunkMeta, 1),
+		chunkData: make(chan []byte, 1),
 
 		Logger: log.New(os.Stdout, "[upload] ", log.LstdFlags),
 	}

@@ -13,15 +13,8 @@ import (
 	"webshell/websocket/service/fs"
 	"webshell/websocket/service/heartbeat"
 	"webshell/websocket/service/shell"
+	"webshell/websocket/service/upload"
 )
-
-type sshShellRequest struct {
-	Host       string `json:"host" binding:"required"`
-	Port       int    `json:"port" binding:"required"`
-	Username   string `json:"username" binding:"required"`
-	Password   string `json:"password,omitempty"`
-	PrivateKey string `json:"privateKey,omitempty"`
-}
 
 func StartLocalShell(c *gin.Context) {
 	var req struct {
@@ -43,10 +36,13 @@ func StartLocalShell(c *gin.Context) {
 	shellService := shell.NewLocalService()
 	fsService := fs.NewLocalService()
 	heartbeatService := heartbeat.NewService()
+	uploadService := upload.NewLocalService()
 
 	wsServer.Register(shellService)
 	wsServer.Register(fsService)
-	wsServer.Register(heartbeatService)
+	wsServer.Register(uploadService)
+
+	wsServer.RegisterPassive(heartbeatService)
 
 	wsServer.Start()
 }
@@ -137,14 +133,19 @@ func (sc *SSHController) GetSSHShell(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	fsSvc := fsService.(*fs.FSService)
+	sftpClient := fsSvc.FS.(*fs.SFTPFileSystem).Client
 
+	uploadService := upload.NewSFTPService(sftpClient)
 	shellService := shell.NewSSHService(sshClient)
 	heartbeatService := heartbeat.NewService()
 
 	// Register all services
 	wsServer.Register(shellService)
 	wsServer.Register(fsService)
-	wsServer.Register(heartbeatService)
+	wsServer.Register(uploadService)
+
+	wsServer.RegisterPassive(heartbeatService)
 
 	wsServer.Start()
 }
