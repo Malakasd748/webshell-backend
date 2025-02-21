@@ -66,7 +66,7 @@ type sshInfo struct {
 	Port     int    `json:"port"`
 }
 
-func (sc *SSHController) LoginSSHShell(c *gin.Context) {
+func (sc *SSHController) LoginSSH(c *gin.Context) {
 	var sshInfo sshInfo
 	if err := c.ShouldBindJSON(&sshInfo); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -104,7 +104,7 @@ func (sc *SSHController) LoginSSHShell(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": id})
 }
 
-func (sc *SSHController) GetSSHShell(c *gin.Context) {
+func (sc *SSHController) StartSSHShell(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid SSH client ID"})

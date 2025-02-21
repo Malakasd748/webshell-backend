@@ -7,9 +7,10 @@ import (
 func SetupRoutes(r *gin.Engine) {
 	shell := r.Group("/shell")
 	{
-		sshController := NewSSHController()
 		shell.GET("/local", StartLocalShell)
-		shell.POST("/ssh", sshController.LoginSSHShell)
-		shell.GET("/ssh/:id", sshController.GetSSHShell)
+
+		sshController := NewSSHController()
+		shell.POST("/ssh", sshController.LoginSSH)
+		shell.GET("/ssh/:id", sshController.StartSSHShell)
 	}
 }
