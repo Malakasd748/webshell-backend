@@ -12,7 +12,7 @@ const (
 )
 
 var (
-	connectionTimeout = time.Duration(getEnvTimeout()) * time.Minute
+	connectionTimeout = time.Duration(getEnvTimeout()) * time.Second
 )
 
 func getEnvTimeout() int {
@@ -26,5 +26,5 @@ func getEnvTimeout() int {
 		log.Printf("$%s (%v) is not a valid integer, default to 1 minute", timeoutName, timeout)
 	}
 
-	return 1
+	return 60
 }
