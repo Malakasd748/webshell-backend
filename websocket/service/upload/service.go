@@ -284,7 +284,7 @@ func (s *UploadService) handleStartFile(id string, data json.RawMessage) {
 
 	// 将 d.Path 转换为相对于 id 的相对路径
 	relPath := d.Path
-	if path.IsAbs(d.Path) {
+	if strings.HasPrefix(d.Path, id) {
 		relPath = path.Clean(strings.TrimPrefix(d.Path, id))
 		relPath = strings.TrimPrefix(relPath, "/")
 	}
