@@ -5,17 +5,17 @@ import (
 )
 
 type WebsocketWriter struct {
-	Service    string
-	Id         string
-	Action     string
-	Conn       *ws.Conn
-	Tranformer func([]byte) []byte
+	Service     string
+	Id          string
+	Action      string
+	Conn        *ws.Conn
+	Transformer func([]byte) []byte
 }
 
 func (w *WebsocketWriter) Write(p []byte) (n int, err error) {
 	var transformed []byte
-	if w.Tranformer != nil {
-		transformed = w.Tranformer(p)
+	if w.Transformer != nil {
+		transformed = w.Transformer(p)
 	} else {
 		transformed = p
 	}

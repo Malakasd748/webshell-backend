@@ -127,7 +127,7 @@ func (s *ShellService) startShell(id string, cwd string) error {
 		Id:      id,
 		Action:  actionCommand,
 		Conn:    s.conn,
-		Tranformer: func(p []byte) []byte {
+		Transformer: func(p []byte) []byte {
 			d, _ := json.Marshal(string(p))
 			return d
 		},
