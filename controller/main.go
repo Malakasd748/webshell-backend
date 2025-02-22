@@ -12,5 +12,7 @@ func SetupRoutes(r *gin.Engine) {
 		sshController := NewSSHController()
 		shell.POST("/ssh", sshController.LoginSSH)
 		shell.GET("/ssh/:id", sshController.StartSSHShell)
+		// 添加文件下载路由
+		shell.GET("/ssh/:id/download", sshController.Download)
 	}
 }

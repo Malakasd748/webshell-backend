@@ -103,19 +103,13 @@ func (s *SSHShellProvider) NewShell(cwd string) (Shell, error) {
 	return sh, nil
 }
 
-func newSSHShellProvider(client *ssh.Client) *SSHShellProvider {
-	sp := &SSHShellProvider{
-		Client: client,
-		Logger: log.New(log.Writer(), "[SSH] ", log.LstdFlags),
-	}
-
-	return sp
-}
-
 func NewSSHService(client *ssh.Client) ws.Service {
 	logger := log.New(log.Writer(), "[shell] ", log.LstdFlags)
 
-	sp := newSSHShellProvider(client)
+	sp := &SSHShellProvider{
+		Client: client,
+		Logger: logger,
+	}
 
 	return &ShellService{
 		ShellProvider: sp,

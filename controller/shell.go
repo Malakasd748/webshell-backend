@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 
+	"webshell/service/downloader"
 	"webshell/websocket"
 	"webshell/websocket/service/fs"
 	"webshell/websocket/service/heartbeat"
@@ -50,6 +52,7 @@ func StartLocalShell(c *gin.Context) {
 type SSHController struct {
 	Clients map[string]*ssh.Client
 	*sync.RWMutex
+	downloaders map[string]downloader.Downloader
 }
 
 func NewSSHController() *SSHController {
@@ -140,6 +143,20 @@ func (sc *SSHController) StartSSHShell(c *gin.Context) {
 	shellService := shell.NewSSHService(sshClient)
 	heartbeatService := heartbeat.NewService()
 
+	// 在创建 SFTP 服务的同时创建下载器
+	sftpDl, err := downloader.NewSFTPDownloader(sshClient)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	sc.Lock()
+	if sc.downloaders == nil {
+		sc.downloaders = make(map[string]downloader.Downloader)
+	}
+	sc.downloaders[id] = sftpDl
+	sc.Unlock()
+
 	// Register all services
 	wsServer.Register(shellService)
 	wsServer.Register(fsService)
@@ -148,4 +165,57 @@ func (sc *SSHController) StartSSHShell(c *gin.Context) {
 	wsServer.RegisterPassive(heartbeatService)
 
 	wsServer.Start()
+}
+
+func (sc *SSHController) Download(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid SSH client ID"})
+		return
+	}
+
+	sc.RLock()
+	dl, exists := sc.downloaders[id]
+	sc.RUnlock()
+
+	if !exists {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid SSH client ID"})
+		return
+	}
+
+	path := c.Query("path")
+	if path == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
+	}
+
+	// Get file info first
+	info, err := dl.Stat(path)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var reader io.ReadCloser
+	if info.IsDir {
+		reader, info, err = dl.DownloadDir(path)
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s.zip", info.Name))
+	} else {
+		reader, info, err = dl.Download(path)
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", info.Name))
+		c.Header("Content-Length", fmt.Sprintf("%d", info.Size))
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer reader.Close()
+
+	c.Header("Content-Type", "application/octet-stream")
+	c.Status(http.StatusOK)
+
+	// 使用大块缓冲区进行流式传输
+	buffer := make([]byte, 32*1024)
+	_, _ = io.CopyBuffer(c.Writer, reader, buffer)
 }
