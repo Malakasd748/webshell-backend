@@ -16,6 +16,49 @@ type SFTPFileSystem struct {
 	*sftp.Client
 	sshClient *ssh.Client
 	*log.Logger
+	separator string // 路径分隔符
+}
+
+// 检测远程系统类型并返回对应的路径分隔符
+func detectRemotePathSeparator(sshClient *ssh.Client) (string, error) {
+	session, err := sshClient.NewSession()
+	if err != nil {
+		return "/", fmt.Errorf("failed to create ssh session: %w", err)
+	}
+	defer session.Close()
+
+	// 尝试执行 ver 命令来检测 Windows
+	output, err := session.Output("ver")
+	if err == nil && strings.Contains(strings.ToLower(string(output)), "windows") {
+		return "\\", nil
+	}
+
+	// 如果 ver 命令失败，尝试 uname 命令
+	session2, err := sshClient.NewSession()
+	if err != nil {
+		return "/", fmt.Errorf("failed to create ssh session: %w", err)
+	}
+	defer session2.Close()
+
+	_, err = session2.Output("uname")
+	if err == nil {
+		// uname 命令成功执行，说明是类 Unix 系统
+		return "/", nil
+	}
+
+	// 如果两个命令都失败，默认使用 Unix 风格路径
+	return "/", nil
+}
+
+// joinPath 使用正确的分隔符连接路径
+func (s *SFTPFileSystem) joinPath(elem ...string) string {
+	// 先使用 / 连接
+	p := path.Join(elem...)
+	// 如果是 Windows 系统，替换为 \
+	if s.separator == "\\" {
+		p = strings.ReplaceAll(p, "/", "\\")
+	}
+	return p
 }
 
 // GetRoot implements fileSystem.
@@ -72,7 +115,7 @@ func (s *SFTPFileSystem) List(path string, showHidden bool) ([]*FileSystemEntry,
 
 		entries = append(entries, &FileSystemEntry{
 			Name:    file.Name(),
-			Path:    filepath.Join(path, file.Name()),
+			Path:    s.joinPath(path, file.Name()),
 			Size:    file.Size(),
 			Mode:    file.Mode(),
 			ModTime: file.ModTime().Unix(),
@@ -84,7 +127,7 @@ func (s *SFTPFileSystem) List(path string, showHidden bool) ([]*FileSystemEntry,
 
 // Create implements fileSystem.
 func (s *SFTPFileSystem) Create(parentPath string, name string, isDir bool) error {
-	fullPath := filepath.Join(parentPath, name)
+	fullPath := s.joinPath(parentPath, name)
 
 	if isDir {
 		return s.Client.MkdirAll(fullPath)
@@ -121,9 +164,9 @@ func (s *SFTPFileSystem) Copy(src string, dest string) error {
 		return fmt.Errorf("source path does not exist: %w", err)
 	}
 
-	destPath := filepath.Join(dest, filepath.Base(src))
+	destPath := s.joinPath(dest, path.Base(src))
 	if _, err := s.Client.Stat(destPath); err == nil {
-		destPath += " copy"
+		destPath = s.joinPath(dest, path.Base(src)+" copy")
 	}
 
 	// 尝试使用cp命令
@@ -163,10 +206,10 @@ func (s *SFTPFileSystem) Move(src string, dest string) error {
 		return fmt.Errorf("source path does not exist: %w", err)
 	}
 
-	newPath := path.Join(dest, srcStat.Name())
+	newPath := s.joinPath(dest, srcStat.Name())
 
 	if _, err := s.Client.Stat(newPath); err == nil {
-		newPath += " copy"
+		newPath = s.joinPath(dest, srcStat.Name()+" copy")
 	}
 	return s.Client.Rename(src, newPath)
 }
@@ -176,7 +219,7 @@ func (s *SFTPFileSystem) Rename(oldPath string, newName string) error {
 	// Get the parent directory of the oldPath
 	parentDir := filepath.Dir(oldPath)
 	// Construct the new full path
-	newPath := filepath.Join(parentDir, newName)
+	newPath := s.joinPath(parentDir, newName)
 
 	err := s.Client.Rename(oldPath, newPath)
 	if err != nil {
@@ -194,10 +237,18 @@ func NewSFTPService(sshClient *ssh.Client) (ws.Service, error) {
 
 	logger := log.New(log.Writer(), "[fs] ", log.LstdFlags)
 
+	// 检测远程系统的路径分隔符
+	separator, err := detectRemotePathSeparator(sshClient)
+	if err != nil {
+		logger.Printf("Warning: Failed to detect remote system separator, using default '/': %v", err)
+		separator = "/"
+	}
+
 	fs := &SFTPFileSystem{
 		Client:    sftpClient,
 		sshClient: sshClient,
 		Logger:    logger,
+		separator: separator,
 	}
 
 	service := &FSService{
