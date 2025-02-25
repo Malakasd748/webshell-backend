@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  webshell-backend:
+    image: golang:1.23.6
+    environment:
+      - GOPROXY=https://goproxy.cn,direct
+      - WEBSHELL_CONNECTION_TIMEOUT=10
+      - WEBSHELL_FS_ROOT=/root
+      - WEBSHELL_PTY_CWD=/root
+    container_name: webshell-backend
+    working_dir: /app
+    volumes:
+      - ../:/app
+    command: go run main.go
+    ports:
+      - "1234:1234"
