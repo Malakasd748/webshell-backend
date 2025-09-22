@@ -8,6 +8,7 @@ func SetupRoutes(r *gin.Engine) {
 	shell := r.Group("/shell")
 	{
 		shell.GET("/local", StartLocalShell)
+		shell.GET("/tcp", StartTCPShell)
 
 		sshController := NewSSHController()
 		shell.POST("/ssh", sshController.LoginSSH)

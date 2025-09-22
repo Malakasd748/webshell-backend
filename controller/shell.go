@@ -219,3 +219,34 @@ func (sc *SSHController) Download(c *gin.Context) {
 	buffer := make([]byte, 32*1024)
 	_, _ = io.CopyBuffer(c.Writer, reader, buffer)
 }
+
+func StartTCPShell(c *gin.Context) {
+	var req struct {
+		Host string `form:"host" binding:"required"`
+		Port int    `form:"port"`
+	}
+
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Port == 0 {
+		req.Port = 23 // Default to telnet port
+	}
+
+	wsServer, err := websocket.NewServer(c.Writer, c.Request)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Register services
+	shellService := shell.NewTCPService(req.Host, req.Port)
+	heartbeatService := heartbeat.NewService()
+
+	wsServer.Register(shellService)
+	wsServer.RegisterPassive(heartbeatService)
+
+	wsServer.Start()
+}
